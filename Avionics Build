@@ -1,0 +1,119 @@
+#include <SPI.h>
+#include <SD.h>
+#include <Wire.h>
+#include "SparkFunMPL3115A2.h"
+// Open SD card for writing
+File tempsFile;
+//Setting up pin on uSD
+const int sdPin = 8;
+int scale = 3; // 3 (±3g) for ADXL337, 200 (±200g) for ADXL377
+boolean micro_is_3V = true; 
+
+//Create an instance of the object
+MPL3115A2 myPressure;
+//unsigned long time;
+
+void setup()
+{
+  Wire.begin();        // Join i2c bus
+  Serial.begin(115200);  // Start serial for output
+
+  myPressure.begin(); // Get sensor online
+
+  //Configure the sensor
+  myPressure.setModeAltimeter(); // Measure altitude above sea level in meters
+  //myPressure.setModeBarometer(); // Measure pressure in Pascals from 20 to 110 kPa
+
+  myPressure.setOversampleRate(7); // Set Oversample to the recommended 128
+  myPressure.enableEventFlags(); // Enable all three pressure and temp event flags 
+  
+  Serial.print("Initializing SD card...");
+  if(!SD.begin(sdPin)) {
+   Serial.println("initialization failed!");
+   return;
+  }
+  Serial.println("Initialization done.");
+
+  tempsFile = SD.open("temps.txt", O_WRITE | O_CREAT | O_APPEND);
+
+  if (tempsFile) {
+    Serial.println("Printing Altitude");
+    tempsFile.println("Printing Altitude:");
+    tempsFile.close();
+    Serial.println("Done.");
+  } else {
+    Serial.println("Error opening file in setup.");
+  }
+}
+
+void loop(){
+  // Open SD card for writing
+  tempsFile = SD.open("temps.txt", O_WRITE | O_CREAT | O_APPEND);
+  //Setting up pins on accelerometer
+  int rawX = analogRead(A0);                  // x-axis of the accelerometer
+  int rawY = analogRead(A1);                  // y-axis
+  int rawZ = analogRead(A2);                  // z-axis (only on 3-axis models)
+  //millis()/1000);
+  // Scale accelerometer ADC readings into common units
+  // Scale map depends on if using a 5V or 3.3V microcontroller
+  float scaledX, scaledY, scaledZ; // Scaled values for each axis 
+   
+  if (micro_is_3V)
+    {
+    //changing values of X,Y,Z data to a scaled G reading as a float
+      scaledX = mapf(rawX, 0, 1023, -scale, scale);
+      scaledY = mapf(rawY, 0, 1023, -scale, scale);
+      scaledZ = mapf(rawZ, 0, 1023, -scale, scale);
+    } 
+
+  if (tempsFile){  
+  //float altitude/temp data coming from library of arduino for altimeter then printing to serial monitor  
+    float altitude = myPressure.readAltitudeFt();
+    Serial.print(" Altitude(ft):");
+    Serial.print(altitude, 2);
+    float temperature = myPressure.readTempF();
+    Serial.print(" Temp(f):");
+    Serial.print(temperature, 2);
+ // Printing time and dividing it by 1000 to equate to one second, not 100% sure its working tho becasue ouput looks like binary   
+    Serial.print(" Time: ");
+    Serial.print((millis()/10000), 2);
+    Serial.println();
+  //printing scaled data to serial monitor
+    Serial.print("X: "); Serial.print(scaledX); Serial.println(" g");
+    Serial.print("Y: "); Serial.print(scaledY); Serial.println(" g");
+    Serial.print("Z: "); Serial.print(scaledZ); Serial.println(" g");
+    Serial.println();
+
+  //write all avionic data to SD card, Need refinement
+    tempsFile.print(" Altitude(ft):");
+    tempsFile.print(altitude, 2);
+    tempsFile.print(" Temp(f):");
+    tempsFile.println(temperature, 2);
+    tempsFile.print(" X Axis G Force):");
+    tempsFile.println(scaledX, 2);
+    tempsFile.print(" Y Axis G Force):");
+    tempsFile.println(scaledY, 2);
+    tempsFile.print(" Z Axis G Force):");
+    tempsFile.println(scaledZ, 2);
+    tempsFile.print(" X Axis Raw):");
+    tempsFile.println(rawX, 2);
+    tempsFile.print(" Y Axis Raw):");
+    tempsFile.println(rawY, 2);
+    tempsFile.print(" Z Axis Raw):");
+    tempsFile.println(rawZ, 2);
+
+  //close the file
+    tempsFile.close();
+  }
+    else {
+    Serial.println("Error opening file in loop.");
+  }
+  delay(20);
+
+}
+ //float standard map arduino function  
+ //float mapf(double val, double in_min, double in_max, double out_min, double out_max)
+  float mapf(float val, float in_min, float in_max, float out_min, float out_max)
+  {
+   return (val - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+  }
